@@ -1,4 +1,4 @@
-import { HttpsProxyAgent } from 'https-proxy-agent';
+import { ProxyAgent } from 'undici';
 import { Scraper } from './scraper';
 import fs from 'fs';
 
@@ -72,16 +72,37 @@ export async function getScraper(
   }
 
   if (proxyUrl) {
-    agent = new HttpsProxyAgent(proxyUrl, {
-      rejectUnauthorized: false,
-    });
+    // Parse the proxy URL
+    const url = new URL(proxyUrl);
+    const username = url.username;
+    const password = url.password;
+
+    // Strip auth from URL if present
+    url.username = '';
+    url.password = '';
+
+    const agentOptions: any = {
+      uri: url.toString(),
+      requestTls: {
+        rejectUnauthorized: false,
+      },
+    };
+
+    // Add Basic auth if credentials exist
+    if (username && password) {
+      agentOptions.token = `Basic ${Buffer.from(
+        `${username}:${password}`,
+      ).toString('base64')}`;
+    }
+
+    agent = new ProxyAgent(agentOptions);
   }
 
   const scraper = new Scraper({
     transform: {
       request: (input, init) => {
         if (agent) {
-          return [input, { ...init, agent }];
+          return [input, { ...init, dispatcher: agent }];
         }
         return [input, init];
       },
