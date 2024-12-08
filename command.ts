@@ -282,6 +282,23 @@ async function executeCommand(commandLine: string) {
       break;
     }
 
+    case 'send-long-tweet': {
+      await ensureAuthenticated();
+
+      // First argument is the tweet text
+      const tweetText = args[0];
+      // Remaining arguments are media file paths
+      const mediaFiles = args.slice(1);
+
+      if (!tweetText) {
+        console.log('Please provide text for the long tweet.');
+      } else {
+        // Call the sendLongTweetCommand with optional media files
+        await sendLongTweetCommand(tweetText, mediaFiles);
+      }
+      break;
+    }
+
     case 'get-tweets':
       await ensureAuthenticated();
       const username = args[0];
@@ -368,6 +385,7 @@ async function executeCommand(commandLine: string) {
       console.log('Available commands:');
       console.log('  login                     - Login to Twitter and save cookies');
       console.log('  send-tweet <text> [mediaFiles...]       - Send a tweet with optional media attachments');
+      console.log('  send-long-tweet <text> [mediaFiles...]  - Send a long tweet (Note Tweet) with optional media attachments');
       console.log('  get-tweets <username>     - Get recent tweets from the specified user');
       console.log('  get-replies <tweetId>     - Get replies to the specified tweet ID');
       console.log('  reply-to-tweet <tweetId> <text> - Reply to a tweet with the specified text');
@@ -471,6 +489,49 @@ async function executeCommand(commandLine: string) {
     default:
       console.log(`Unknown command: ${command}. Type 'help' to see available commands.`);
       break;
+  }
+}
+
+// Function to send a long tweet (Note Tweet) with optional media files
+async function sendLongTweetCommand(
+  text: string,
+  mediaFiles?: string[],
+  replyToTweetId?: string
+): Promise<string | null> {
+  try {
+    let mediaData;
+
+    if (mediaFiles && mediaFiles.length > 0) {
+      // Prepare media data by reading files and determining media types
+      mediaData = await Promise.all(
+        mediaFiles.map(async (filePath) => {
+          const absolutePath = path.resolve(__dirname, filePath);
+          const buffer = await fs.promises.readFile(absolutePath);
+          const ext = path.extname(filePath).toLowerCase();
+          const mediaType = getMediaType(ext);
+          return { data: buffer, mediaType };
+        })
+      );
+    }
+
+    // Send the long tweet using the sendLongTweet function
+    const response = await scraper.sendLongTweet(text, replyToTweetId, mediaData);
+
+    // Parse the response to extract the tweet ID
+    const responseData = await response.json();
+    const tweetId =
+      responseData?.data?.notetweet_create?.tweet_results?.result?.rest_id;
+
+    if (tweetId) {
+      console.log(`Long tweet sent: "${text.substring(0, 50)}..." (ID: ${tweetId})`);
+      return tweetId;
+    } else {
+      console.error('Tweet ID not found in response.');
+      return null;
+    }
+  } catch (error) {
+    console.error('Error sending long tweet:', error);
+    return null;
   }
 }
 
